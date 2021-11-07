@@ -1,0 +1,580 @@
+---
+title: "Olympic Games dataset analysis"
+author: "Kirill Kirilenko"
+output: html_document
+---
+
+# Preparation
+
+To run this script just choose your working directory where the data is located
+```{r}
+working_dir <- '~/Bioinformatics_Institute/Statistiks-and-R-programming/project1/'
+```
+
+Load packages and data
+
+```{r,warning=FALSE,message=FALSE}
+required_packages <- c('plyr', 'readr', 'dplyr', 'tidyr', 'stringr','purrr',
+                       'ggplot2','ggthemes', 'nortest','forcats')
+for (p in required_packages) {
+  if(!require(p,character.only = TRUE)) {
+    install.packages(p, dep = TRUE,repos = "http://cran.us.r-project.org")
+  }
+}
+
+```
+
+```{r}
+library(plyr)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(purrr)
+library(ggplot2)
+library(ggthemes)
+library(nortest)
+library(forcats)
+```
+
+
+## I) Create a function to process .csv files
+```{r,warning=FALSE,message=FALSE}
+load_data <- function(directory,extension = '.csv'){
+  files <- list.files(path=directory, pattern=extension, full.names=TRUE)
+  df <-ldply(files, read_csv)
+}
+```
+
+```{r,warning=FALSE,message=FALSE}
+olympic_games <- load_data(working_dir) # it may take a moment
+```
+
+First look at the data:
+```{r}
+head(olympic_games)
+str(olympic_games)
+summary(olympic_games)
+```
+
+## II) Check if data is correct. Cleaning data
+
+How many NA-values in our data? 
+```{r}
+colSums(is.na(olympic_games))
+```
+
+Oh, we can't just delete rows with NA-values, so we will lose most of the data.
+
+```{r}
+olympic_games$Sex <- factor(olympic_games$Sex)
+olympic_games$Season <- factor(olympic_games$Season)
+olympic_games$Medal <- factor(olympic_games$Medal)
+```
+
+Look at the categorical data:
+```{r}
+apply(olympic_games[,c(3,11,15)], 2, function(x) unique(x)) # We can see invalid value "G" in the Sex column
+length(which(olympic_games$Sex == 'G'))
+```
+
+So, change "G" to NA in the Sex variable
+```{r}
+olympic_games$Sex <- factor(replace(olympic_games$Sex, olympic_games$Sex == 'G', NA))
+str(olympic_games$Sex)
+```
+
+Now let's look at the numeric variables
+
+1) A **Height** variable
+```{r}
+summary(olympic_games$Height) 
+sum(olympic_games$Height > 240, na.rm = T) # delete this value
+olympic_games$Height[olympic_games$Height > 240] <- NA
+```
+2) A **Weight** variable
+```{r}
+summary(olympic_games$Weight) 
+sum(olympic_games$Weight < 30, na.rm = T)
+```
+We thought it is impossible to be less than 30 kg when you are a professional athlete. But we found out on the web it's possible! But less 20 we couldn't find anyone. Btw it is "Helmut Lehmann" who was more than 30 kg
+```{r}
+olympic_games$Name[which(olympic_games$Weight < 20)]
+# Change his weight to NA
+olympic_games$Weight[olympic_games$Weight > 240] <- NA
+```
+
+3) An **Age** variable
+
+We found out on the web that the youngest Olympic competitor was 10 years old And the oldest one was 72 y.o. (look here https://edition.cnn.com/2021/08/04/sport/youngest-oldest-olympians-spt-intl/index.html)
+
+```{r}
+summary(olympic_games$Age) 
+sum(olympic_games$Age > 72, na.rm = T)
+```
+
+4) A **Games** variable
+
+```{r}
+unique(olympic_games$Games)
+```
+We change value "2000 Su" to 2000 Summer and "2004 Summe" to 2004 Summer
+```{r}
+olympic_games$Games[olympic_games$Games == "2000 Su"] <- "2000 Summer"
+olympic_games$Games[olympic_games$Games == "2004 Summe"] <- "2004 Summer"
+```
+
+5) A **Year** variable
+
+```{r}
+sort(unique(olympic_games$Year))
+```
+
+It's OK!
+
+6) A **Season** variable 
+
+```{r}
+unique(olympic_games$Season)
+```
+
+And this one is OK!
+
+7) A **City** variable
+
+```{r}
+table(olympic_games$City)
+```
+OK again! 
+
+8) A **Sport** variable
+
+```{r}
+table(olympic_games$Sport)
+```
+Let's change the value 'Footba' to Football
+
+```{r}
+olympic_games$Sport[olympic_games$Sport == 'Footba'] <- 'Football'
+```
+
+Here we created a function to catch the outliers:
+
+```{r}
+outliers <- function(df){
+  df %>%
+    select_if(is.numeric) %>% 
+    map(~ boxplot.stats(.x)$out) 
+}
+```
+
+Let's look at the number of outliers in the numeric variables exclude a Year variable(we won't delete the outliers).
+```{r}
+sapply(outliers(select(olympic_games, -Year)),function(x) length(x))
+```
+## III) The youngest athlete of the 1992 Olympics
+
+1) The youngest Male athlete is **`r min(olympic_games$Age[olympic_games$Year == 1992 & olympic_games$Sex == 'M'], na.rm = T)`**
+2) The youngest Female athlete is **`r min(olympic_games$Age[olympic_games$Year == 1992 & olympic_games$Sex == 'F'], na.rm = T)`**
+
+## IV) Mean and sd of a Height variable for Male and Female athletes
+
+1) Male
+
+mean: **`r mean(olympic_games$Height[olympic_games$Sex=='M'], na.rm = T)`**
+
+sd: **`r sd(olympic_games$Height[olympic_games$Sex=='M'], na.rm = T)`**
+
+2) Female
+
+mean: **`r mean(olympic_games$Height[olympic_games$Sex=='F'], na.rm = T)`**
+
+sd: **`r sd(olympic_games$Height[olympic_games$Sex=='F'], na.rm = T)`**
+
+## V) Mean and sd of a Height variable for Female tennis players in 2000
+mean: **`r round(mean(olympic_games$Height[olympic_games$Sex == 'F' & olympic_games$Year == 2000], na.rm = T),digits = 1)`**
+
+sd: **`r round(sd(olympic_games$Height[olympic_games$Sex == 'F' & olympic_games$Year == 2000], na.rm = T),digits = 1)`**
+
+## VI) The heaviest athlete in 2006
+
+```{r}
+olympic_games %>% 
+  filter(Year == 2006) %>% 
+  slice_max(Weight) %>% 
+  select(Name,Weight)
+```
+
+##  VII) Number of gold medals earned by women from 1980 to 2010
+
+```{r}
+olympic_games %>% 
+  filter(Year >= 1980 & Year <= 2010 & Medal == 'Gold' & Sex == 'F') %>% 
+  select(Name) %>% 
+  summarise(n=n())
+```
+
+## VIII) Count the years when John Aalberg was at the Olympics
+
+```{r}
+olympic_games %>% 
+  filter(Name == 'John Aalberg') %>% 
+  select(Year) %>% 
+  distinct()
+```
+So, He  participated at Olympiads twice
+
+## IX) Identify the least and the most represented age groups of the Olympics in 2008
+```{r}
+olympic_grouped_2008 <- table(cut(olympic_games$Age[olympic_games$Year == 2008], c(14, 24, 34, 44,55)))
+```
+
+So, the most represented age group is **`r names(olympic_grouped_2008[which.max(olympic_grouped_2008)])`**
+
+The least is **`r names(olympic_grouped_2008[which.min(olympic_grouped_2008)])`**
+
+## X) The difference between number of Olympics Sport in 2002 and 1998
+
+```{r}
+length(na.omit(unique(olympic_games$Sport[olympic_games$Year == 2002]))) - length(na.omit(unique(olympic_games$Sport[olympic_games$Year == 1998])))
+```
+1
+## XI) top 3 countries by the number of medals at the Olympiads
+Winter:
+```{r,warning=FALSE,message=FALSE}
+winter_top <- na.omit(olympic_games %>% filter(Season == 'Winter') %>% 
+  select(Team, Medal) %>%  
+  group_by(Medal,Team) %>% 
+  summarise(n = n())) %>% 
+  slice_max(order_by = n, n = 1)
+winter_top
+```
+
+Summer:
+
+```{r,warning=FALSE,message=FALSE}
+summer_top <- na.omit(olympic_games %>% filter(Season == 'Summer') %>% 
+  select(Team, Medal) %>% 
+  group_by(Medal,Team) %>% 
+  summarise(n = n())) %>% 
+  slice_max(order_by = n, n = 1)
+summer_top
+```
+
+but according to https://www.statista.com/statistics/1101719/summer-olympics-all-time-medal-list-since-1892/ it is not true (idk why).
+
+## XII) Create a new variable Height_z_scores
+
+```{r}
+olympic_games$Height_z_scores <- scale(olympic_games$Height)
+```
+
+## XIII) Create a new variable Height_min_max_scaled
+```{r}
+olympic_games$Height_min_max_scaled <- (olympic_games$Height - min(olympic_games$Height, na.rm = T))/(max(olympic_games$Height,na.rm = T) - min(olympic_games$Height, na.rm = T))
+colnames(olympic_games)
+```
+
+## XIV) Compare Height, Weight and Age of men and women
+
+1) A **Height** variable
+
+Look at the Q-Q-plot plotted on a variable **Height** in general
+
+```{r,warning=FALSE}
+winter_olympics <- filter(olympic_games,Season == 'Winter')
+ggplot(winter_olympics,aes(sample = Height))+
+  stat_qq()+
+  stat_qq_line()+
+  ggtitle('Q-Q-plot for a Height variable')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles")
+```
+
+There are several ways to compare two variables. The most common t-test requires
+normal distribution. First check the normality of our variables:
+
+We can't use standard shapiro-test to normality test (because sample size > 5000, shapiro.test doesn't support such large sample sizes).Let's use Anderson-Darling normality test (from nortest library)
+```{r}
+ad.test(winter_olympics$Height[olympic_games$Sex == 'M'])
+ad.test(winter_olympics$Height[olympic_games$Sex == 'F'])
+```
+
+In both cases p << 0.01, thus we decided to use U-test:
+
+```{r}
+wilcox.test(Height~Sex, data = winter_olympics)
+```
+
+The U-test statistics is following: **W = 31822284, p-value < 2.2e-16**.
+
+```{r,warning=FALSE }
+winter_height <- ggplot(winter_olympics,aes(fill = Sex,y = Height))+
+  geom_boxplot(alpha=0.6)+
+  ggtitle('Winter olympics from 1924 to 2014. Boxplots for heights of men and women')+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+winter_height + theme(axis.text.x = element_blank(),
+                      axis.ticks = element_blank())
+
+```
+
+2) A **Weight** variable
+
+```{r,warning=FALSE,message=FALSE}
+ggplot(winter_olympics,aes(sample = Weight))+
+  stat_qq()+
+  stat_qq_line()+
+  ggtitle('Q-Q-plot for a Weight variable')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles")
+```
+
+And again we will use the Anderson-Darling normality test:
+
+```{r}
+ad.test(winter_olympics$Weight[olympic_games$Sex == 'M'])
+ad.test(winter_olympics$Weight[olympic_games$Sex == 'F'])
+```
+
+U-test:
+```{r}
+wilcox.test(Weight~Sex, data = winter_olympics)
+```
+
+U-test statistics: **W = 29583596, p-value < 2.2e-16**.
+
+```{r,warning=FALSE,message=FALSE}
+winter_weight <- ggplot(winter_olympics,aes(fill = Sex,y = Weight))+
+  geom_boxplot(alpha=0.6)+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))+
+  ggtitle('Winter olympics from 1924 to 2014. Boxplots for weight of men and women')+
+  theme(plot.title = element_text(hjust = 0.5))
+
+winter_weight + theme(axis.text.x = element_blank(),
+               axis.ticks = element_blank())
+```
+
+3) An **Age** variable 
+
+```{r,warning=FALSE,message=FALSE}
+ggplot(winter_olympics,aes(sample = Age))+
+  stat_qq()+
+  stat_qq_line()+
+  ggtitle('Q-Q-plot for the Age variable')+
+  theme(plot.title = element_text(hjust = 0.5))+
+  labs(x = "Theoretical Quantiles", y = "Sample Quantiles")
+```
+
+the Anderson-Darling normality test:
+```{r}
+ad.test(winter_olympics$Age[olympic_games$Sex == 'M'])
+ad.test(winter_olympics$Age[olympic_games$Sex == 'F'])
+```
+
+U-test:
+```{r}
+wilcox.test(Age~Sex, data = winter_olympics)
+```
+
+U-test statistics is next: **W = 206040116, p-value < 2.2e-16**.
+
+```{r,warning=FALSE,message=FALSE}
+winter_ages <- ggplot(winter_olympics,aes(fill = Sex,y = Age))+
+  geom_boxplot(alpha=0.6)+
+  ggtitle('Winter olympics from 1924 to 2014. Boxplots for ages of men and women')+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+winter_ages + theme(axis.text.x = element_blank(),
+                    axis.ticks = element_blank())
+```
+
+Generally speaking we have entire populations and we just proved that there are all different. Let's dive deeper in our analysis:
+
+a. Look at the distribution of a **Height** varibale in different years
+
+```{r,warning=FALSE,message=FALSE}
+winter_olympics %>% ggplot(aes(x=as.factor(Year), y=Height, fill=Sex)) +
+  geom_boxplot(alpha=0.6) +
+  xlab("Winter olympic year") + ylab("Height") +
+  ggtitle('The Height of athletes at the Winter Olympics over years')+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90))+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))
+```
+
+b. A **Weight** variable:
+
+```{r,warning=FALSE,message=FALSE}
+winter_olympics %>% ggplot(aes(x=as.factor(Year), y=Weight, fill=Sex)) +
+  geom_boxplot(alpha=0.6) +
+  xlab("Winter olympic year") + ylab("Weight") +
+  ggtitle('The Weight of athletes at the Winter Olympics over years')+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90))+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))
+```
+
+c. An **Age** variable
+
+```{r,warning=FALSE,message=FALSE}
+winter_olympics %>% ggplot(aes(x=as.factor(Year), y=Age, fill=Sex)) +
+  geom_boxplot(alpha=0.6) +
+  xlab("Winter olympic year") + ylab("Age") +
+  ggtitle('The Age of athletes at the Winter Olympics over years')+
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 90))+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))
+```
+
+Looking at the boxplots over years we found out that the less difference between F and M was in the variable Age (by Olympiads)
+
+
+As a conclusion for XIV step:
+None of the analyzed variables had a normal distribution (checked by using Anderson-Darling normality test), so we used non-parametric U-test to perform comparisons. 
+1) Height. The statistics are: **W = 31822284, p-value < 2.2e-16, N_female = 13523, N_male = 26727**
+2) Weight.The tatistics are: **W = 29583596, p-value < 2.2e-16, N_female = 13334, N_male = 26209**
+3) Age. Statistics are: **W = 206040116, p-value < 2.2e-16, N_female = 15073, N_male = 33206**
+In all cases we can **reject** the null-hypothesis, in our case, about populations equivalence by specific variables.
+
+We think it is obvious that we have in all comparisons significant results:
+the sizes of groups are incredibly large.It seems it is better to compare more specific variables e.g. Age between F and M in 1952 for football athletes (see step XVI).
+
+##  XV) Find the relationships between Medal and Team variables
+
+```{r}
+table(olympic_games$Medal)
+length(unique(olympic_games$Team))
+```
+
+The null hypothesis here is that the two categories (Team and Medal) are independent.
+
+```{r}
+team_medal_data <- olympic_games %>% 
+  filter(!is.na(Medal)) %>% 
+  select(Medal,Team)
+
+head(table(team_medal_data$Team,team_medal_data$Medal))
+```
+
+We used a Monte-Carlo simulation to compute p-value. And a computed p-value
+depends on number of replicates (B). we decided to choose the number of replicates
+equal to the number of medals in general (39782). 
+
+```{r}
+chisq.test(table(team_medal_data$Team,team_medal_data$Medal), simulate.p.value = TRUE,B=39782)
+```
+
+In this case **p-value = 2.514e-05, X-squared = 5293.4, and B = 39782** (sample size).
+
+Visualization is the best way to reject the null hypothesis here:
+
+```{r}
+medalsby_country <- team_medal_data %>% group_by(Team) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
+  slice(1:35)
+medalsby_country$Team <- factor(medalsby_country$Team,levels = )
+
+top_35<- medalsby_country %>% 
+  mutate(Team = fct_reorder(Team,n)) %>% 
+  ggplot(aes(x = Team, y = n)) +
+  geom_col(fill="blue",color = 'white',alpha = 0.8) + 
+  coord_flip()+
+  ggtitle('Total number of medals (top 35 countries)')+
+  theme(plot.title = element_text(hjust = 0.5))
+top_35 + theme(axis.title.x=element_blank())
+```
+
+## XVI) We decided to test more specific hypotheses:
+1) Compare an Age variable between the men football athletes at the beginning of the 20th century and at the beginning of the 21th century
+
+There are several ways to generate samples, we stopped on this: for the first group we took footballers from 1904 Olympiad and 1908 Olympiad, because later WWI had started, and two because sample sizes are small comparing to 20th century, and for the second from 2016 (just the latest presented). 
+
+Let's visualize our data: 
+
+```{r,warning=FALSE,message=FALSE}
+football_dataset <- olympic_games %>% 
+  filter(Year %in% c(1904,1908,2016), Sport == 'Football', Sex == 'M')
+
+football_dataset$group <- factor(ifelse(football_dataset$Year == 2016,'20th','19th'))
+
+football_boxplots <- ggplot(football_dataset,aes(fill = group,y = Age))+
+  geom_boxplot(alpha=0.6)+
+  ggtitle('Age distribution of male footballers in the 20th and 21st centuries')+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))+
+  theme(plot.title = element_text(hjust = 0.5))
+football_boxplots+ theme(axis.title.x=element_blank(),
+                         axis.text.x=element_blank())
+```
+
+Perform normality-testing (here we will use shapiro-test):
+
+```{r}
+shapiro.test(football_dataset$Age[football_dataset$group == '19th'])
+shapiro.test(football_dataset$Age[football_dataset$group == '20th'])
+```
+
+The first group (men at the beginning of the 19th century) has a normal distribution (**W = 0.9643, p-value = 0.01081**). But the second group (20th century) doesn't have a normal distribution (**W = 0.84207, p-value = 6.563e-16**). We will use non-parametric comparing:
+
+```{r}
+wilcox.test(football_dataset$Age[football_dataset$group == '19th'],
+            football_dataset$Age[football_dataset$group == '20th'])
+```
+
+The statistics is next: **W = 13431, p-value = 0.488. N_group1 = 108, N_group2 = 270**
+Here we **can't reject** the null hypothesis (That's Good!). 
+
+
+2) Who weighs more female judo athletes or female volleyball players in 2012?
+
+```{r}
+volleyball_judo_subset <- olympic_games %>% 
+  filter(Year == '2012', Sport %in% c('Volleyball', "Judo"), Sex == 'F')
+```
+
+Again perform some boxplotting:
+```{r,warning=FALSE,message=FALSE}
+judo_volleeball_boxplots <- ggplot(volleyball_judo_subset,aes(fill = Sport,y = Weight))+
+  geom_boxplot(alpha=0.6)+
+  ggtitle('Weight distribution of female judo and volleyball athletes at Olympics 2012 ')+
+  scale_fill_manual(values=c("#E69F00","#56B4E9"))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+judo_volleeball_boxplots + theme(axis.title.x=element_blank(),
+                               axis.text.x=element_blank())
+```
+
+
+
+```{r}
+shapiro.test(volleyball_judo_subset$Weight[volleyball_judo_subset$Sport == 'Volleyball'])
+```
+```{r}
+shapiro.test(volleyball_judo_subset$Weight[volleyball_judo_subset$Sport == 'Judo'])
+```
+
+For the volleyball female athletes in 2012 normality testing shows: **W = 0.99056, p-value = 0.4519.**
+
+For the judo female athletes in 2012 normality testing shows: **W = 0.8023, p-value = 4.688e-13**
+
+So, let's use non-parametric U-test:
+
+```{r}
+wilcox.test(volleyball_judo_subset$Weight[volleyball_judo_subset$Sport == 'Judo'],
+            volleyball_judo_subset$Weight[volleyball_judo_subset$Sport == 'Volleyball'])
+```
+
+The statistics are: **W = 7834, p-value = 3.327e-05, N_group1 = 143, N_group2 = 153**. Here we can **reject** the null-hypothesis. 
+
+## Use the following code to write the full data set to a new file .csv
+
+```{r}
+write.csv(olympic_games,file = paste0(working_dir,'full_olympiads.csv'))
+```
+
+
+
+
